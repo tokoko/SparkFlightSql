@@ -1,0 +1,80 @@
+version: "3.9"
+services:
+  spark-master:
+    build: .
+    ports:
+      - "9090:8080"
+      - "7077:7077"
+      - "9000:9000"
+      - "5050:4040"
+    volumes:
+      - ./warehouse:/warehouse
+      - ./apps:/opt/spark-apps
+      - ../target/scala-2.12:/opt/spark-jars
+    environment:
+      - SPARK_LOCAL_IP=spark-master
+      - SPARK_WORKLOAD=master
+  spark-worker-a:
+    build: .
+    ports:
+      - "9091:8080"
+      - "7000:7000"
+      - "9001:9000"
+      - "5051:4040"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=3G
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_EXECUTOR_MEMORY=1G
+      - SPARK_WORKLOAD=worker
+      - SPARK_LOCAL_IP=spark-worker-a
+      - FORWARDED_PORT=9001
+      - PEERS=spark-worker-b:9000,localhost:9002
+    volumes:
+      - ./warehouse:/warehouse
+      - ./apps:/opt/spark-apps
+      - ../target/scala-2.12:/opt/spark-jars
+  spark-worker-b:
+    build: .
+    ports:
+      - "9092:8080"
+      - "7001:7000"
+      - "9002:9000"
+      - "5052:4040"
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=3G
+      - SPARK_DRIVER_MEMORY=1G
+      - SPARK_EXECUTOR_MEMORY=1G
+      - SPARK_WORKLOAD=worker
+      - SPARK_LOCAL_IP=spark-worker-b
+      - FORWARDED_PORT=9002
+      - PEERS=spark-worker-a:9000,localhost:9001
+    volumes:
+      - ./warehouse:/warehouse
+      - ./apps:/opt/spark-apps
+      - ../target/scala-2.12:/opt/spark-jars
+  mariadb:
+    image: mariadb:latest
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_DATABASE: metastore_db
+  hive-metastore:
+    build: metastore
+    ports:
+      - 9083:9083
+    depends_on:
+      - mariadb
+    restart: always
+    volumes:
+      - ./warehouse:/warehouse
