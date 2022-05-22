@@ -13,7 +13,8 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-core" % "3.2.1" % "provided",
       "org.apache.spark" %% "spark-sql" % "3.2.1" % "provided",
       "org.apache.spark" %% "spark-hive" % "3.2.1" % "provided",
-      "org.scalatest" %% "scalatest-funsuite" % "3.2.12" % Test
+      "org.scalatest" %% "scalatest-funsuite" % "3.2.12" % Test,
+      "io.delta" %% "delta-core" % "1.2.1" % Test
     ),
     assembly / assemblyJarName := "spark-flight-sql.jar",
 //    assembly / assemblyExcludedJars := {
