@@ -1,10 +1,7 @@
 package com.tokoko.spark.flight
 
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.connector.catalog.{FunctionCatalog, Identifier, SupportsNamespaces, TableCatalog}
-
-import java.util
-import collection.JavaConverters._
+import org.apache.spark.sql.connector.catalog.{Identifier, SupportsNamespaces, TableCatalog}
 
 object CatalogUtils {
 
@@ -13,7 +10,7 @@ object CatalogUtils {
     This is a work-around to get the list from spark configuration directly.
    */
 
-  def listCatalogs(sparkSession: SparkSession): java.util.List[String] = {
+  def listCatalogs(sparkSession: SparkSession): List[String] = {
     val prefix = "spark.sql.catalog."
     val defaultCatalog = "spark_catalog"
 
@@ -24,13 +21,12 @@ object CatalogUtils {
       .filter(conf => !conf.contains("."))
       .union(Set(defaultCatalog))
       .toList
-      .asJava
   }
 
-  def listNamespaces(sparkSession: SparkSession, catalog: String, filterPattern: String): util.List[(String, String)] = {
+  def listNamespaces(sparkSession: SparkSession, catalog: String, filterPattern: String): List[(String, String)] = {
     val manager = sparkSession.sessionState.catalogManager
 
-    val requestedCatalogs = if (catalog == "") listCatalogs(sparkSession).asScala.toList else List(catalog)
+    val requestedCatalogs = if (catalog == "") listCatalogs(sparkSession).toList else List(catalog)
 
     requestedCatalogs
       .map(c => manager.catalog(c))
@@ -42,12 +38,11 @@ object CatalogUtils {
         case _ => Array.empty[(String, String)]
       }.flatten
         .filter(namespace => filterPattern == null || FilterPatternUtils.matches(namespace._2, filterPattern))
-        .asJava
   }
 
-  def listTables(sparkSession: SparkSession, catalog: String, schemaPattern: String, tablePattern: String): util.List[(String, String, String)] = {
+  def listTables(sparkSession: SparkSession, catalog: String, schemaPattern: String, tablePattern: String): List[(String, String, String)] = {
     val manager = sparkSession.sessionState.catalogManager
-    val namespaces = listNamespaces(sparkSession, catalog, schemaPattern).asScala
+    val namespaces = listNamespaces(sparkSession, catalog, schemaPattern)
 
     namespaces
       .map(namespace => (manager.catalog(namespace._1), namespace._2))
@@ -59,7 +54,6 @@ object CatalogUtils {
         case _ => Array.empty[(String, String, String)]
       }.flatten
       .filter(table => tablePattern == null || FilterPatternUtils.matches(table._3, tablePattern))
-      .asJava
   }
 
   def tableExists(sparkSession: SparkSession, catalog: String, schema: String, table: String): Boolean = {

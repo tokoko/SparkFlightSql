@@ -1,5 +1,33 @@
 # SparkFlightSql
 
+### Goals
+The goal of the project is to offer **SparkThriftServer** alternative based on Arrow flight SQL protocol. 
+SparkThriftServer has a number of limitations, mainly that it's a centralized server that needs to pass all query results to the client through a single Spark Driver process.
+**SparkFlightSql** aims to offer a distributed alternative where multiple servers will share the workload.
+
+### Architecture
+#### Metadata Queries
+Metadata Queries are assumed not to require distributed serving and are always served with a single-endpoint FlightInfo.
+
+#### Data Queries
+All the heavy lifting of conversion between a Spark DataFrame and Arrow Record Batches fortunately has already been done in Spark.
+DataFrame has a method `toArrowBatchRdd` (not part of public interface, though) that is used for Pandas UDFs.
+
+Data Queries are assumed to require query distribution. A Client can submit a query to any active FlightServer.
+The query is submitted to Spark Cluster when getFlightInfo endpoint is called and all active FlightServers are notified about the query.
+
+It would be too cumbersome to offer up Flight Endpoints to the client from Spark Executor processes as executors are fundamentally assumed to be ephemeral. 
+Instead of collecting query results to the driver, DataFrame is converted to an RDD of ArrowRecordBatches and each partition calls doPut endpoint of the *closest* active FlightServer.
+(Note: Right now a random FlightServer is chosen)
+Therefore, the client receives FlightInfo containing tickets to all active FlightServers. 
+Each FlightServer passes record batches received from executors to an appropriate client and completes the query once the FlightServer that started the query sends the notification that query has completed.
+
+![Alt text](https://www.plantuml.com/plantuml/svg/ZP1DQiCm44RtSueFPvsMw00bSN-MtMHfj13su9h8aXdBfL1yzo9NXPB8nCjX7ZEFTno3aJ3rbgfdsx4BccWmzSMqZEBTDunJWMyYe7gpNViHpYoVB7Z4UJ1omOjqSTmTDCoOfWDshJ0xW82_izZldr0bG1CjozhwgK7n-iNr5BoCyHK0rBuVl6CNKFs-IKHyz73IwVuzL2seS4EHp9-wqifoAiVDD5-NAgF-lL3gNoYrsArcKZfV2UMcJkNsJkLwfxHVl9BMIirRQex-CntPDLDlVm00)
+
+#### Inter-Server Communication
+Communication between servers is implemented with doAction calls, but it would probably make more sense to use an external ZooKeeper service.
+It would enable information passing about active queries, as well as ability to increase/decrease the number of FlightServers as needed.
+
 ### Features
 | Feature                                      | Status      |
 |----------------------------------------------|-------------|
@@ -8,6 +36,7 @@
 | Distributed Server                           | In Progress |
 | Execution Mode configurable per query (auto) | Planned     |
 | Prepared Statements                          | Planned     |
+| Streaming Queries                            | Planned     |
 | ZooKeeper Integration                        | Planned     |
 | DML Operations                               | Planned     |
 | Simple Authentication                        | Planned     |
@@ -15,3 +44,4 @@
 | Kerberos Authentication                      | Planned     |
 | Ranger Integration                           | Planned     |
 | Storage Impersonation                        | Planned     |
+| Spark UI Plugin                              | Planned     |

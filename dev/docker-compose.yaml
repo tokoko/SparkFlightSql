@@ -72,7 +72,7 @@ services:
   hive-metastore:
     build: metastore
     ports:
-      - 9083:9083
+      - "9083:9083"
     depends_on:
       - mariadb
     restart: always

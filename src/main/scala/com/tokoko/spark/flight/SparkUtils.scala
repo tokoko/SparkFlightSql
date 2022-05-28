@@ -10,7 +10,6 @@ import org.apache.arrow.vector.types.pojo.Schema
 import org.apache.spark.rdd.RDD
 import java.io.{ByteArrayInputStream, IOException}
 import java.nio.channels.Channels
-import collection.JavaConverters._
 import scala.util.Random
 
 object SparkUtils {
@@ -18,8 +17,8 @@ object SparkUtils {
   def applyForEach(rdd: RDD[Array[Byte]],
                    jsonSchema: String,
                    handle: ByteString,
-                   serverLocations: java.util.List[Location]) = {
-    val serverURIs = serverLocations.asScala.map(_.getUri)
+                   serverLocations: List[Location]): Unit = {
+    val serverURIs = serverLocations.map(_.getUri)
     val handleString = handle.toStringUtf8
 
     rdd.foreachPartition(it => {

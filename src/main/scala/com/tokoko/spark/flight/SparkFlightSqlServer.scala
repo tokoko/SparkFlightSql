@@ -62,7 +62,6 @@ object SparkFlightSqlServer extends App {
     })
 
 
-
   val server = FlightServer.builder(rootAllocator, location,
     new SparkFlightSqlProducer(internalLocation, publicLocation, spark, peerLocations)
   ).build
