@@ -2,6 +2,7 @@ package com.tokoko.spark.flight
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog.{Identifier, SupportsNamespaces, TableCatalog}
+import org.apache.spark.sql.types.StructType
 
 object CatalogUtils {
 
@@ -61,6 +62,14 @@ object CatalogUtils {
 
     manager.isCatalogRegistered(catalog) && manager.catalog(catalog).asInstanceOf[TableCatalog]
       .tableExists(Identifier.of(Array(schema), table))
+  }
+
+  def tableSchema(sparkSession: SparkSession, catalog: String, schema: String, table: String): StructType = {
+    val manager = sparkSession.sessionState.catalogManager
+
+    manager.catalog(catalog).asInstanceOf[TableCatalog]
+      .loadTable(Identifier.of(Array(schema), table))
+      .schema()
   }
 
 }

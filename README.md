@@ -1,7 +1,7 @@
 # SparkFlightSql
 
 ### Goals
-The goal of the project is to offer **SparkThriftServer** alternative based on Arrow flight SQL protocol. 
+The goal of the project is to offer a **SparkThriftServer** alternative based on Arrow flight SQL protocol. 
 SparkThriftServer has a number of limitations, mainly that it's a centralized server that needs to pass all query results to the client through a single Spark Driver process.
 **SparkFlightSql** aims to offer a distributed alternative where multiple servers will share the workload.
 
@@ -28,6 +28,13 @@ Each FlightServer passes record batches received from executors to an appropriat
 Communication between servers is implemented with doAction calls, but it would probably make more sense to use an external ZooKeeper service.
 It would enable information passing about active queries, as well as ability to increase/decrease the number of FlightServers as needed.
 
+#### Usage
+A single node server can be started by running `com.tokoko.spark.flight.SparkFlightSqlServer`.
+
+Alternatively, there is a Docker Compose file provided in `dev` folder that starts 2-node Spark Standalone Cluster with separate Hive Metastore.
+after running `docker compose up`, flight servers need to be started by `docker exec -ti dev-spark-worker-b-1 bash /opt/spark-apps/run.sh`
+and `docker exec -ti dev-spark-worker-a-1 bash /opt/spark-apps/run.sh`
+
 ### Features
 | Feature                                      | Status      |
 |----------------------------------------------|-------------|
@@ -37,6 +44,7 @@ It would enable information passing about active queries, as well as ability to 
 | Execution Mode configurable per query (auto) | Planned     |
 | Prepared Statements                          | Planned     |
 | Streaming Queries                            | Planned     |
+| Spark UI Plugin                              | Planned     |
 | ZooKeeper Integration                        | Planned     |
 | DML Operations                               | Planned     |
 | Simple Authentication                        | Planned     |
@@ -44,4 +52,3 @@ It would enable information passing about active queries, as well as ability to 
 | Kerberos Authentication                      | Planned     |
 | Ranger Integration                           | Planned     |
 | Storage Impersonation                        | Planned     |
-| Spark UI Plugin                              | Planned     |

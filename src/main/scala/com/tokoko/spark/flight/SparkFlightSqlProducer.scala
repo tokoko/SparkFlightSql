@@ -338,7 +338,7 @@ class SparkFlightSqlProducer(val internalLocation: Location,
       populateVarBinaryVector(
         res.getVector("table_schema").asInstanceOf[VarBinaryVector],
         tables.map(table => {
-          val sparkSchema: StructType = spark.table(table._1 + "." + table._2 + "." + table._3).schema
+          val sparkSchema = CatalogUtils.tableSchema(spark, table._1, table._2, table._3)
           val arrowSchema: Schema = ArrowUtilsExtended.toArrowSchema(sparkSchema, spark.sessionState.conf.sessionLocalTimeZone)
           val outputStream: ByteArrayOutputStream = new ByteArrayOutputStream
           try MessageSerializer.serialize(new WriteChannel(Channels.newChannel(outputStream)), arrowSchema)

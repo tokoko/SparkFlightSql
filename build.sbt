@@ -10,25 +10,13 @@ lazy val root = (project in file("."))
       "org.apache.arrow" % "flight-core" % "7.0.0",
       "org.apache.arrow" % "flight-grpc" % "7.0.0",
       "org.apache.arrow" % "flight-sql" % "7.0.0",
-      "org.apache.spark" %% "spark-core" % "3.2.1" % "provided",
-      "org.apache.spark" %% "spark-sql" % "3.2.1" % "provided",
-      "org.apache.spark" %% "spark-hive" % "3.2.1" % "provided",
+      "org.apache.spark" %% "spark-core" % "3.2.1",// % "provided",
+      "org.apache.spark" %% "spark-sql" % "3.2.1",// % "provided",
+      "org.apache.spark" %% "spark-hive" % "3.2.1",// % "provided",
       "org.scalatest" %% "scalatest-funsuite" % "3.2.12" % Test,
       "io.delta" %% "delta-core" % "1.2.1" % Test
     ),
     assembly / assemblyJarName := "spark-flight-sql.jar",
-//    assembly / assemblyExcludedJars := {
-//      val cp = (assembly / fullClasspath).value
-//      cp filter( (d) => {
-//          d.data.getName == "netty-transport-native-epoll-4.1.50.Final.jar" ||
-//          d.data.getName == "netty-transport-native-unix-common-4.1.50.Final.jar" ||
-//          d.data.getName == "javax.annotation-api-1.3.2.jar" ||
-//          d.data.getName == "netty-handler-proxy-4.1.52.Final.jar" ||
-//          d.data.getName == "netty-codec-http-4.1.52.Final.jar" ||
-//          d.data.getName == "netty-codec-http2-4.1.52.Final.jar" ||
-//          d.data.getName == "netty-codec-socks-4.1.52.Final.jar"
-//      })
-//    }
     dependencyOverrides ++= Seq(
       "com.fasterxml.jackson.core" % "jackson-core" % "2.12.3"
       ,"com.fasterxml.jackson.core" % "jackson-databind" % "2.12.3"
@@ -36,25 +24,9 @@ lazy val root = (project in file("."))
     )
   )
 
-//dependencyOverrides ++= Seq(
-//  "com.thoughtworks.paranamer" % "paranamer" % "2.8" % Test
-//  , "commons-codec" % "commons-codec" % "1.14" % Test
-//  , "org.apache.commons" % "commons-lang3" % "3.12.0"
-//  ,
-//  , "io.netty" % "netty-buffer" % "4.1.68.Final"
-//  , "org.apache.hadoop" % "hadoop-client-runtime" % "3.1.1"
-//  , "org.apache.hadoop" % "hadoop-client-api" % "3.1.1"
-
-
 
 ThisBuild / assemblyMergeStrategy := {
   case "reference.conf" => MergeStrategy.concat
-//  case "META-INF/services/org.apache.spark.sql.sources.DataSourceRegister" => MergeStrategy.concat
-//  case "META-INF/services/io.grpc.LoadBalancerProvider" => MergeStrategy.concat
-  case "META-INF/javamail.charset.map" => MergeStrategy.last
-  case "META-INF/javamail.default.address.map" => MergeStrategy.last
-  case "META-INF/javamail.default.providers" => MergeStrategy.last
-
   case PathList("META-INF", "services", xs@_*) => MergeStrategy.concat
   case PathList("META-INF", xs@_*) => MergeStrategy.discard
   case PathList("org", "aopalliance", xs@_*) => MergeStrategy.last

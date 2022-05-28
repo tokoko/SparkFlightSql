@@ -7,11 +7,12 @@ import org.apache.spark.sql.SparkSession
 object SparkFlightSqlServer extends App {
 
   val spark = SparkSession.getActiveSession.getOrElse(
-    SparkSession.builder.getOrCreate
+    SparkSession.builder.master("local").getOrCreate
   )
 
+  // TODO temporary for testing
   if (
-    spark.conf.get("spark.flight.public.port") == "9001"
+    spark.conf.get("spark.flight.public.port", "") == "9001"
   ) {
     spark.range(17).toDF("id").write.mode("overwrite").saveAsTable("TestTable")
     spark.sql("REFRESH TABLE TestTable").show()
@@ -43,23 +44,23 @@ object SparkFlightSqlServer extends App {
     )
   )
 
-  val peersConf = spark.conf.get("spark.flight.peers")
+  val peersConf = spark.conf.getOption("spark.flight.peers")
 
-  val peerLocations = peersConf.split(";")
-    .map(peer => {
-      val adresses = peer.split(",").map(part => {
-        Location.forGrpcInsecure(
-          part.split(":")(0),
-          Integer.parseInt(part.split(":")(1))
-        )
+  val peerLocations = peersConf.map(
+    conf => conf.split(";")
+      .map(peer => {
+        val adresses = peer.split(",").map(part => {
+          Location.forGrpcInsecure(
+            part.split(":")(0),
+            Integer.parseInt(part.split(":")(1))
+          )
+        })
+
+        if (adresses.length == 1) (adresses(0), adresses(0))
+        else (adresses(0), adresses(1))
+
       })
-
-      if (adresses.length == 1) {
-        (adresses(0), adresses(0))
-      } else {
-        (adresses(0), adresses(1))
-      }
-    })
+  ).getOrElse(Array.empty)
 
 
   val server = FlightServer.builder(rootAllocator, location,
