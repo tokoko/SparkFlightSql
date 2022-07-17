@@ -14,7 +14,8 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-sql" % "3.2.1",// % "provided",
       "org.apache.spark" %% "spark-hive" % "3.2.1",// % "provided",
       "org.scalatest" %% "scalatest-funsuite" % "3.2.12" % Test,
-      "io.delta" %% "delta-core" % "1.2.1" % Test
+      "io.delta" %% "delta-core" % "1.2.1" % Test,
+      "org.apache.curator" % "curator-test" % "5.3.0" % Test
     ),
     assembly / assemblyJarName := "spark-flight-sql.jar",
     dependencyOverrides ++= Seq(

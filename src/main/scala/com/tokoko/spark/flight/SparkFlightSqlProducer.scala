@@ -3,7 +3,8 @@ package com.tokoko.spark.flight
 import com.google.protobuf.Any.pack
 import com.google.protobuf.ByteString.copyFrom
 import com.google.protobuf.{ByteString, Message}
-import org.apache.arrow.flight.{Action, CallStatus, Criteria, FlightDescriptor, FlightEndpoint, FlightInfo, FlightProducer, FlightStream, Location, PutResult, Result, SchemaResult, Ticket}
+import com.tokoko.spark.flight.manager.ClusterManager
+import org.apache.arrow.flight.{Action, AsyncPutListener, CallStatus, Criteria, FlightClient, FlightDescriptor, FlightEndpoint, FlightInfo, FlightProducer, FlightStream, Location, PutResult, Result, SchemaResult, Ticket}
 import org.apache.arrow.flight.sql.{FlightSqlProducer, SqlInfoBuilder}
 import org.apache.arrow.flight.sql.FlightSqlProducer.Schemas
 import org.apache.arrow.flight.sql.impl.FlightSql
@@ -12,8 +13,8 @@ import org.apache.arrow.vector.ipc.{ReadChannel, WriteChannel}
 import org.apache.arrow.vector.ipc.message.MessageSerializer
 import org.apache.arrow.vector.{VarBinaryVector, VarCharVector, VectorLoader, VectorSchemaRoot, VectorUnloader}
 import org.apache.arrow.vector.types.pojo.Schema
+import org.apache.log4j.Logger
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.ArrowUtilsExtended
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, IOException}
@@ -23,22 +24,14 @@ import java.nio.charset.StandardCharsets
 import java.util
 import java.util.UUID.randomUUID
 import collection.JavaConverters._
+import scala.util.Random
 
 /*_*/
-class SparkFlightSqlProducer(val internalLocation: Location,
-                             val publicLocation: Location,
-                             val spark: SparkSession,
-                             val peerLocations: Array[(Location, Location)] = Array.empty) extends FlightSqlProducer {
+class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: SparkSession) extends FlightSqlProducer {
   /*_*/
+  private val logger = Logger.getLogger(this.getClass)
+
   val rootAllocator = new RootAllocator()
-
-  private val internalPeerLocations = peerLocations.map(_._1).union(Array(internalLocation))
-
-  private val publicPeerLocations = peerLocations.map(_._2).union(Array(publicLocation))
-
-  val flightManager = new FlightManager(
-    internalPeerLocations.filter(loc => loc != internalLocation).toList
-    , rootAllocator)
 
   private val localFlightBuffer =  new util.HashMap[ByteString, Statement]
 
@@ -48,10 +41,10 @@ class SparkFlightSqlProducer(val internalLocation: Location,
     .withFlightSqlServerArrowVersion("7.0.0")
     .withFlightSqlServerReadOnly(true)
 
-
   private def getFlightInfoForSchema(schema: Schema, request: Message, descriptor: FlightDescriptor): FlightInfo = {
+    val location = clusterManager.getInfo.publicLocation
     val ticket: Ticket = new Ticket(pack(request).toByteArray)
-    val endpoints = List(new FlightEndpoint(ticket, publicLocation))
+    val endpoints = List(new FlightEndpoint(ticket, location))
     new FlightInfo(schema, descriptor, endpoints.asJava, -1, -1)
   }
 
@@ -82,10 +75,17 @@ class SparkFlightSqlProducer(val internalLocation: Location,
   }
 
   override def acceptPut(context: FlightProducer.CallContext, flightStream: FlightStream, ackStream: FlightProducer.StreamListener[PutResult]): Runnable = {
+    logger.warn("Accept Put Called")
     val path = flightStream.getDescriptor.getPath
     if (path != null && !path.isEmpty) () => {
-      def foo() = {
+      def foo(): Unit = {
         val handle = ByteString.copyFromUtf8(path.get(0))
+
+        // TODO
+        if (!localFlightBuffer.containsKey(handle)) {
+          localFlightBuffer.put(handle, new Statement)
+        }
+
         val statement = localFlightBuffer.get(handle)
         statement.setRoot(flightStream.getRoot)
         while ( {
@@ -106,16 +106,9 @@ class SparkFlightSqlProducer(val internalLocation: Location,
 
   override def doAction(context: FlightProducer.CallContext, action: Action, listener: FlightProducer.StreamListener[Result]): Unit = {
 //    logger.warn("DoAction called at " + internalLocation.toString + " " + action.getType)
-    if (action.getType == "RUNNING") {
-      flightManager.addFlight(ByteString.copyFrom(action.getBody))
-      localFlightBuffer.put(ByteString.copyFrom(action.getBody), new Statement)
-      listener.onCompleted()
+    if (!clusterManager.handleDoAction(context, action, listener)) {
+      super.doAction(context, action, listener)
     }
-    else if (action.getType == "COMPLETED") {
-      flightManager.setCompleted(ByteString.copyFrom(action.getBody))
-      listener.onCompleted()
-    }
-    else super.doAction(context, action, listener)
   }
 
 
@@ -132,8 +125,7 @@ class SparkFlightSqlProducer(val internalLocation: Location,
   override def getFlightInfoStatement(command: FlightSql.CommandStatementQuery,
                                       context: FlightProducer.CallContext,
                                       descriptor: FlightDescriptor): FlightInfo = {
-
-//    logger.warn("GetFlightInfo called at " + internalLocation.toString)
+    logger.warn("GetFlightInfo called at " + "internalLocation.toString")
     val handle = copyFrom(randomUUID.toString.getBytes(StandardCharsets.UTF_8))
     val sparkSchema = spark.sql(command.getQuery).schema
     val arrowSchema = ArrowUtilsExtended.toArrowSchema(sparkSchema, spark.sessionState.conf.sessionLocalTimeZone)
@@ -142,42 +134,57 @@ class SparkFlightSqlProducer(val internalLocation: Location,
 
     val ticket = new Ticket(pack(ticketStatementQuery).toByteArray)
     val query = command.getQuery
+    clusterManager.addFlight(handle)
 
-    localFlightBuffer.put(handle, new Statement)
-
-    flightManager.addFlight(handle)
-    flightManager.broadcast(handle)
-
-    if (true) new Thread(() => {
+    new Thread(() => {
       val df = spark.sql(query).repartition(3)
       val abr = ArrowUtilsExtended.convertToArrowBatchRdd(df)
-      SparkUtils.applyForEach(abr, arrowSchema.toJson, handle, internalPeerLocations.toList)
-      flightManager.setCompleted(handle)
-      flightManager.broadcast(handle)
-    }).start()
-    else new Thread(() => {
-        val df = spark.sql(query).repartition(3)
-        val abr = ArrowUtilsExtended.convertToArrowBatchRdd(df)
-        val it = abr.toLocalIterator
-        val statement = localFlightBuffer.get(handle)
-        val root = VectorSchemaRoot.create(arrowSchema, rootAllocator)
-        statement.setRoot(root)
+      val jsonSchema = arrowSchema.toJson
+      val handleString = handle.toStringUtf8
+
+      val serverURIs = clusterManager.getNodes.map(_.internalLocation).map(_.getUri)
+
+      abr.foreachPartition(it => {
+        val serverLocations = serverURIs.map(uri =>
+          Location.forGrpcInsecure(uri.getHost, uri.getPort)
+        )
+
+        val rootAllocator = new RootAllocator(Long.MaxValue)
+
+        val clients = serverLocations.map(location => {
+          FlightClient.builder(rootAllocator, location).build()
+        })
+
+        val schema = Schema.fromJSON(jsonSchema)
+        val root = VectorSchemaRoot.create(schema, rootAllocator)
+        val descriptor = FlightDescriptor.path(handleString)
 
         it.foreach(r => {
-            try {
-              val arb = MessageSerializer.deserializeRecordBatch(new ReadChannel(Channels.newChannel(new ByteArrayInputStream(r))), rootAllocator)
-              statement.addBatch(arb)
-            } catch {
-              case e: IOException => e.printStackTrace()
-            }
-        })
-        flightManager.setCompleted(handle)
-        flightManager.broadcast(handle)
+          try {
+            val arb = MessageSerializer.deserializeRecordBatch(
+              new ReadChannel(Channels.newChannel(
+                new ByteArrayInputStream(r)
+              )), rootAllocator)
+            val vectorLoader = new VectorLoader(root)
+            vectorLoader.load(arb)
+          } catch {
+            case e: IOException => e.printStackTrace()
+          }
+
+          val clientListener = clients(new Random().nextInt(clients.size))
+            .startPut(descriptor, root, new AsyncPutListener())
+          clientListener.putNext()
+          clientListener.completed();
+        });
+      })
+
+      clusterManager.setCompleted(handle)
     }).start()
-    val endpoints = publicPeerLocations
+
+    val endpoints = clusterManager.getNodes.map(_.publicLocation)
       .map(serverLocation => new FlightEndpoint(ticket, serverLocation))
 
-    new FlightInfo(arrowSchema, descriptor, endpoints.toList.asJava, -1, -1)
+    new FlightInfo(arrowSchema, descriptor, endpoints.asJava, -1, -1)
   }
 
   override def getFlightInfoPreparedStatement(command: FlightSql.CommandPreparedStatementQuery, context: FlightProducer.CallContext, descriptor: FlightDescriptor): FlightInfo = {
@@ -187,8 +194,13 @@ class SparkFlightSqlProducer(val internalLocation: Location,
   override def getSchemaStatement(command: FlightSql.CommandStatementQuery, context: FlightProducer.CallContext, descriptor: FlightDescriptor): SchemaResult = ???
 
   override def getStreamStatement(ticket: FlightSql.TicketStatementQuery, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
-//    logger.warn("GetStream called at " + internalLocation.toString)
+    //logger.warn("GetStream called at " + internalLocation.toString)
     val handle = ticket.getStatementHandle
+
+    // TODO
+    if (!localFlightBuffer.containsKey(handle)) {
+      localFlightBuffer.put(handle, new Statement)
+    }
 
     val statement = localFlightBuffer.get(handle)
 
@@ -199,7 +211,7 @@ class SparkFlightSqlProducer(val internalLocation: Location,
     }
 
     while ( {
-      statement.getRoot == null && !(flightManager.getStatus(handle) == "COMPLETED")
+      statement.getRoot == null && !(clusterManager.getStatus(handle) == "COMPLETED")
     }) try {
 //      logger.warn("Waiting for statement VectorSchemaRoot: Sleeping for 1 second")
       Thread.sleep(1000)
@@ -216,10 +228,10 @@ class SparkFlightSqlProducer(val internalLocation: Location,
       listener.start(root)
 
       while (!completed) {
-        val batch = statement.nextBatch
+        val batch = statement.nextBatch()
         val loader = new VectorLoader(root)
         if (batch == null) {
-          if (flightManager.getStatus(handle) == "COMPLETED") {
+          if (clusterManager.getStatus(handle) == "COMPLETED") {
             completed = true
           } else {
             try {

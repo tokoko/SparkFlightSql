@@ -1,6 +1,7 @@
 package com.tokoko.spark.flight
 
 import com.google.protobuf.ByteString.readFrom
+import com.tokoko.spark.flight.utils.TestUtils
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.flight.sql.util.TableRef
 import org.apache.arrow.flight.{CallStatus, FlightClient, FlightInfo, FlightServer, Location}
@@ -13,8 +14,8 @@ import org.apache.arrow.vector.{VarBinaryVector, VarCharVector}
 import org.apache.spark.sql.SparkSession
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
-import collection.JavaConverters._
 
+import collection.JavaConverters._
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
@@ -40,11 +41,8 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
     spark.range(10).toDF("id").write.mode("overwrite").saveAsTable("testtable")
 
     val rootAllocator = new RootAllocator(Long.MaxValue)
-    val location = Location.forGrpcInsecure("localhost", 0)
-    server = FlightServer.builder(rootAllocator, location,
-      new SparkFlightSqlProducer(location, location, spark)).build
 
-    server.start
+    server = TestUtils.startServers(rootAllocator, spark, Seq(9000, 9001)).head
 
     val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)
     client = new FlightSqlClient(FlightClient.builder(rootAllocator, clientLocation).build)

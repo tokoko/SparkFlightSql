@@ -24,4 +24,7 @@
 #spark.flight.internal.port 9000
 #spark.flight.public.host localhost
 #spark.flight.public.port 9000
-#spark.flight.peers "172.19.0.4:9000,localhost:9002;172.19.0.3:9000,localhost:9001"
+#spark.flight.manager zookeeper
+#spark.flight.manager.static.peers "172.19.0.4:9000,localhost:9002;172.19.0.3:9000,localhost:9001"
+#spark.flight.manager.zookeeper.connectionString localhost:9000
+#spark.flight.manager.zookeeper.membershipPath /spark-flight-servers

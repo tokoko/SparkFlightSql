@@ -1,9 +1,12 @@
 package com.tokoko.spark.flight
 
+import com.tokoko.spark.flight.manager.ClusterManager
+import com.tokoko.spark.flight.utils.TestUtils
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.flight._
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.arrow.vector.BigIntVector
+import org.apache.curator.test.TestingServer
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.util.ArrowHelpers
 import org.scalatest.BeforeAndAfterAll
@@ -47,6 +50,7 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
   }
 
   override def beforeAll(): Unit = {
+    new TestingServer(9003, true)
     spark = SparkSession.builder
       .master("local")
       .enableHiveSupport
@@ -58,20 +62,7 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
 
     rootAllocator = new RootAllocator(Long.MaxValue)
 
-    val serverLocations = Seq(
-      Location.forGrpcInsecure("localhost", 9000),
-      Location.forGrpcInsecure("localhost", 9001)
-    )
-
-    servers = serverLocations.map(location => {
-      FlightServer.builder(rootAllocator,
-          location,
-          new SparkFlightSqlProducer(location, location, spark,
-            serverLocations.filter(_ != location).map(l => (l, l)).toArray)
-      ).build
-    })
-
-    servers.foreach(_.start)
+    servers = TestUtils.startServers(rootAllocator, spark, Seq(9000, 9001))
 
     clients = servers.map(server => {
       val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)

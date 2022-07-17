@@ -1,12 +1,12 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.utils
 
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import collection.JavaConverters._
 
 import java.util
+import scala.collection.JavaConverters._
 
 class TestCatalog extends TableCatalog with SupportsNamespaces {
 

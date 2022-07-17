@@ -45,7 +45,7 @@ and `docker exec -ti dev-spark-worker-a-1 bash /opt/spark-apps/run.sh`
 | Prepared Statements                          | Planned     |
 | Streaming Queries                            | Planned     |
 | Spark UI Plugin                              | Planned     |
-| ZooKeeper Integration                        | Planned     |
+| ZooKeeper Integration                        | In Progress |
 | DML Operations                               | Planned     |
 | Simple Authentication                        | Planned     |
 | LDAP Authentication                          | Planned     |
