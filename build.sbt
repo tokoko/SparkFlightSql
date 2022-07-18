@@ -25,6 +25,7 @@ lazy val root = (project in file("."))
     )
   )
 
+ThisBuild / parallelExecution := false
 
 ThisBuild / assemblyMergeStrategy := {
   case "reference.conf" => MergeStrategy.concat

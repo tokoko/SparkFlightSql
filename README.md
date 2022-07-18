@@ -25,8 +25,21 @@ Each FlightServer passes record batches received from executors to an appropriat
 ![Alt text](https://www.plantuml.com/plantuml/svg/ZP1DQiCm44RtSueFPvsMw00bSN-MtMHfj13su9h8aXdBfL1yzo9NXPB8nCjX7ZEFTno3aJ3rbgfdsx4BccWmzSMqZEBTDunJWMyYe7gpNViHpYoVB7Z4UJ1omOjqSTmTDCoOfWDshJ0xW82_izZldr0bG1CjozhwgK7n-iNr5BoCyHK0rBuVl6CNKFs-IKHyz73IwVuzL2seS4EHp9-wqifoAiVDD5-NAgF-lL3gNoYrsArcKZfV2UMcJkNsJkLwfxHVl9BMIirRQex-CntPDLDlVm00)
 
 #### Inter-Server Communication
-Communication between servers is implemented with doAction calls, but it would probably make more sense to use an external ZooKeeper service.
-It would enable information passing about active queries, as well as ability to increase/decrease the number of FlightServers as needed.
+
+There is a pluggable `ClusterManager` interface that governs how FlightServers communicate with each other
+
+##### InMemoryClusterManager
+`InMemoryClusterManager` requires no external dependencies. Communication between servers is implemented with doAction calls, however it's impossible to change the number of FlightServers once started.
+
+* spark.flight.manager - static
+* spark.flight.manager.static.peers - "localhost:8080,localhost:8080;localhost:8081,localhost:8081"
+
+##### ZookeeperClusterManager
+`ZookeeperClusterManager` requires an external Zookeeper cluster. There's no need to configure server locations upfront, instead servers use Zookeeper service to discover and communicate with each other once started.
+
+* spark.flight.manager - zookeeper
+* spark.flight.manager.zookeeper.url - localhost:10000
+* spark.flight.manager.zookeeper.membershipPath - "/spark-flight-sql"
 
 #### Usage
 A single node server can be started by running `com.tokoko.spark.flight.SparkFlightSqlServer`.
@@ -47,7 +60,7 @@ and `docker exec -ti dev-spark-worker-a-1 bash /opt/spark-apps/run.sh`
 | Spark UI Plugin                              | Planned     |
 | ZooKeeper Integration                        | In Progress |
 | DML Operations                               | Planned     |
-| Simple Authentication                        | Planned     |
+| Basic Authentication                         | In Progress |
 | LDAP Authentication                          | Planned     |
 | Kerberos Authentication                      | Planned     |
 | Ranger Integration                           | Planned     |

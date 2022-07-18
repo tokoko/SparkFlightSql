@@ -19,7 +19,7 @@ class ZookeeperDataSuite extends AnyFunSuite with BeforeAndAfterAll {
   var zkServer: TestingServer = _
 
   override def beforeAll(): Unit = {
-    zkServer = new TestingServer(9003, true)
+    zkServer = new TestingServer(9006, true)
     spark = SparkSession.builder
       .master("local")
       .enableHiveSupport
@@ -31,13 +31,10 @@ class ZookeeperDataSuite extends AnyFunSuite with BeforeAndAfterAll {
 
     rootAllocator = new RootAllocator(Long.MaxValue)
 
-    servers = TestUtils.startServersZookeeper(rootAllocator, spark, Seq(9000, 9001))
+    val setup = TestUtils.startServers(rootAllocator, spark, Seq(9004, 9005), "basic", "zookeeper", "9006")
 
-    clients = servers.map(server => {
-      val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)
-      new FlightSqlClient(FlightClient.builder(rootAllocator, clientLocation).build)
-    })
-
+    servers = setup._1
+    clients = setup._2
   }
 
   test("check select statement") {
@@ -49,7 +46,7 @@ class ZookeeperDataSuite extends AnyFunSuite with BeforeAndAfterAll {
   }
 
   override def afterAll(): Unit = {
-    servers.foreach(_.shutdown)
+    servers.foreach(_.close)
     zkServer.close()
   }
 

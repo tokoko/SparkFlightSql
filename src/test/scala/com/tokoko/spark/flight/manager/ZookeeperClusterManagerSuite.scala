@@ -30,6 +30,7 @@ class ZookeeperClusterManagerSuite extends AnyFunSuite with BeforeAndAfterAll {
     assert(manager.getNodes.length == 1)
     assert(manager.getInfo == manager.getNodes.head)
     assert(manager.getPeers.isEmpty)
+    manager.close()
   }
 
   test("test multiple-node cluster") {
@@ -63,6 +64,9 @@ class ZookeeperClusterManagerSuite extends AnyFunSuite with BeforeAndAfterAll {
     assert(manager.getNodes == manager2.getNodes)
     assert(manager.getPeers.head == manager2.getInfo)
     assert(manager2.getPeers.head == manager.getInfo)
+
+    manager.close()
+    manager2.close()
   }
 
   test("test multiple-node cluster flight information exchange") {
@@ -94,7 +98,8 @@ class ZookeeperClusterManagerSuite extends AnyFunSuite with BeforeAndAfterAll {
     assert(manager2.getStatus(ByteString.copyFromUtf8("1")) == "RUNNING")
     manager.setCompleted(ByteString.copyFromUtf8("1"))
     assert(manager2.getStatus(ByteString.copyFromUtf8("1")) == "COMPLETED")
-
+    manager.close()
+    manager2.close()
   }
 
 

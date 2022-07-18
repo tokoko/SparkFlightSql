@@ -3,9 +3,12 @@ package com.tokoko.spark.flight.manager
 import com.google.protobuf.ByteString
 import org.apache.arrow.flight.{Action, CallStatus, FlightClient, FlightProducer, Location, Result}
 import org.apache.arrow.memory.RootAllocator
+import org.apache.log4j.Logger
+
 import java.util
 
 class InMemoryClusterManager(conf: Map[String, String]) extends ClusterManager {
+  private val logger = Logger.getLogger(this.getClass)
 
   private val allocator = new RootAllocator()
 
@@ -31,6 +34,8 @@ class InMemoryClusterManager(conf: Map[String, String]) extends ClusterManager {
     .map(_.internalLocation)
     .map((loc: Location) => Location.forGrpcInsecure(loc.getUri.getHost, loc.getUri.getPort))
     .map((location: Location) => FlightClient.builder(allocator, location).build)
+
+  var authenticated = false
 
   override def getLocation: Location = ClusterManager.getLocation(conf)
 
@@ -58,8 +63,14 @@ class InMemoryClusterManager(conf: Map[String, String]) extends ClusterManager {
   }
 
   private def broadcast(handle: ByteString): Unit = {
+    logger.warn("Broadcasting changes")
     if (!flights.containsKey(handle)) throw new RuntimeException("Flight doesn't exist")
     val action = new Action(flights.get(handle), handle.toByteArray)
+
+    if (!authenticated) {
+      clients.foreach(c => c.authenticateBasic("user", "password"))
+      authenticated = true
+    }
 
     clients.foreach((client: FlightClient) => {
       val it = client.doAction(action)
@@ -84,4 +95,5 @@ class InMemoryClusterManager(conf: Map[String, String]) extends ClusterManager {
     } else false
   }
 
+  override def close(): Unit = {}
 }

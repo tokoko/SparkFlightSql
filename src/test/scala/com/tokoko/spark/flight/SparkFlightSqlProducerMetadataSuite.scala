@@ -24,34 +24,40 @@ import scala.collection.mutable
 
 class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfterAll {
 
-  var client: FlightSqlClient = _
-  var server: FlightServer = _
+  var clients: Seq[FlightSqlClient] = _
+  var servers: Seq[FlightServer] = _
 
   override def beforeAll(): Unit = {
     val spark = SparkSession.builder
       .master("local")
-      .config("spark.sql.catalog.test_catalog", "com.tokoko.spark.flight.TestCatalog")
+      .config("spark.sql.catalog.test_catalog", "com.tokoko.spark.flight.utils.TestCatalog")
       .config("spark.sql.catalog.test_catalog.test_db", "test_table1,test_table2")
       .config("spark.sql.catalog.test_catalog.test_db2", "test_table3,test_table4")
       .enableHiveSupport
       .appName("SparkFlightSqlServer").getOrCreate
 
-    spark.sparkContext.setLogLevel("ERROR")
+    spark.sparkContext.setLogLevel("WARN")
 
     spark.range(10).toDF("id").write.mode("overwrite").saveAsTable("testtable")
 
     val rootAllocator = new RootAllocator(Long.MaxValue)
 
-    server = TestUtils.startServers(rootAllocator, spark, Seq(9000, 9001)).head
+    val setup = TestUtils.startServers(rootAllocator, spark, Seq(9002, 9003), "basic", "static")
 
-    val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)
-    client = new FlightSqlClient(FlightClient.builder(rootAllocator, clientLocation).build)
+    servers = setup._1
+    clients = setup._2
+
+//    val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)
+//    val flightClient = FlightClient.builder(rootAllocator, clientLocation).build
+//    flightClient.authenticateBasic("user", "password")
+//    client = new FlightSqlClient(flightClient)
   }
 
   // TODO tables - tableTypes
   // TODO table types
 
   test("getCatalogs returns spark_catalog and other configured V2 plugged catalogs") {
+    val client = clients.head
     val fi = client.getCatalogs()
     val stream = client.getStream(fi.getEndpoints.get(0).getTicket)
 
@@ -70,6 +76,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   def getSchemasOutput(fi: FlightInfo): mutable.Set[(String, String)] = {
+    val client = clients.head
     val stream = client.getStream(fi.getEndpoints.get(0).getTicket)
 
     val schemas: mutable.Set[(String, String)] = mutable.Set.empty
@@ -92,7 +99,9 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("getSchemas for all catalogs") {
+    val client = clients.head
     val fi = client.getSchemas("", null)
+    println(fi)
     val schemas = getSchemasOutput(fi)
 
     assert(schemas == mutable.Set(
@@ -104,6 +113,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("getSchemas for a single catalog") {
+    val client = clients.head
     val fi = client.getSchemas("test_catalog", null)
     val schemas = getSchemasOutput(fi)
 
@@ -115,6 +125,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("getSchemas for all catalogs filtered") {
+    val client = clients.head
     val fi = client.getSchemas("", "test%")
     val schemas = getSchemasOutput(fi)
 
@@ -126,6 +137,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("getTables returns all tables without schemas") {
+    val client = clients.head
     val fi = client.getTables("", null, null, null, false)
     val stream = client.getStream(fi.getEndpoints.get(0).getTicket)
 
@@ -160,6 +172,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("getTables returns table with schema") {
+    val client = clients.head
     val fi = client.getTables("spark_catalog", null, null, null, true)
     val stream = client.getStream(fi.getEndpoints.get(0).getTicket)
 
@@ -203,6 +216,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   def assertEmpty(flightInfo: FlightInfo): Unit = {
+    val client = clients.head
     val stream = client.getStream(flightInfo.getEndpoints.get(0).getTicket)
 
     while (stream.next) {
@@ -211,6 +225,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("key requests are always empty") {
+    val client = clients.head
     val tableRef = TableRef.of("spark_catalog", "default", "testtable")
     assertEmpty(client.getPrimaryKeys(tableRef))
     assertEmpty(client.getImportedKeys(tableRef))
@@ -219,6 +234,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   }
 
   test("key requests throw an exception if table doesn't exist") {
+    val client = clients.head
     try {
       client.getPrimaryKeys(TableRef.of("default", "default", "testtable"))
       assert(false)
@@ -229,7 +245,7 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
 
 
   override def afterAll(): Unit = {
-    server.shutdown()
+    servers.foreach(s => s.close())
   }
 
 }

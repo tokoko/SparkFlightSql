@@ -4,6 +4,7 @@ import com.tokoko.spark.flight.manager.ClusterManager
 import com.tokoko.spark.flight.utils.TestUtils
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.flight._
+import org.apache.arrow.flight.grpc.CredentialCallOption
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.arrow.vector.BigIntVector
 import org.apache.curator.test.TestingServer
@@ -12,6 +13,7 @@ import org.apache.spark.sql.util.ArrowHelpers
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
+import java.util.Optional
 import scala.collection.mutable
 import collection.JavaConverters._
 
@@ -22,32 +24,6 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
   var servers: Seq[FlightServer] = _
   var rootAllocator: BufferAllocator = _
   var spark: SparkSession = _
-
-  def assertSmallDataFrameEquality(actualDF: DataFrame, expectedDF: DataFrame): Boolean = {
-    if (!actualDF.schema.equals(expectedDF.schema)) {
-      return false
-    }
-    if (!actualDF.collect().sameElements(expectedDF.collect())) {
-      return false
-    }
-    true
-  }
-
-  def toDf(flightInfo: FlightInfo): DataFrame = {
-    val dfs: mutable.Set[(DataFrame)] = mutable.Set.empty
-
-    flightInfo.getEndpoints.asScala.foreach(endpoint => {
-      val client = new FlightSqlClient(FlightClient.builder(rootAllocator, endpoint.getLocations.get(0)).build)
-      val stream = client.getStream(endpoint.getTicket)
-
-      while (stream.next) {
-        dfs.add(ArrowHelpers.toDataFrame(spark, stream.getRoot))
-      }
-
-    })
-
-    dfs.reduceLeft((a, b) => a.union(b))
-  }
 
   override def beforeAll(): Unit = {
     new TestingServer(9003, true)
@@ -62,12 +38,18 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
 
     rootAllocator = new RootAllocator(Long.MaxValue)
 
-    servers = TestUtils.startServers(rootAllocator, spark, Seq(9000, 9001))
+    val setup = TestUtils.startServers(rootAllocator, spark, Seq(9000, 9001), "basic", "static")
 
-    clients = servers.map(server => {
-      val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)
-      new FlightSqlClient(FlightClient.builder(rootAllocator, clientLocation).build)
-    })
+    servers = setup._1
+    clients = setup._2
+
+//    clients = servers.map(server => {
+//      val clientLocation = Location.forGrpcInsecure("localhost", server.getPort)
+//      val client = FlightClient.builder(rootAllocator, clientLocation).build
+//      client.authenticateBasic("user", "password")
+//      val flightSqlClient = new FlightSqlClient(client)
+//      (flightSqlClient, client)
+//    })
 
   }
 
@@ -75,8 +57,8 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
     val query = "SELECT * FROM testtable"
     val fi = clients.head.execute(query)
 
-    assert(assertSmallDataFrameEquality(
-      toDf(fi).orderBy("id"), spark.sql(query)))
+    assert(TestUtils.assertSmallDataFrameEquality(
+      TestUtils.toDf(fi, spark, rootAllocator).orderBy("id"), spark.sql(query)))
   }
 
   test("prepared statements throw an exception") {

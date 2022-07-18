@@ -141,7 +141,6 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
       val abr = ArrowUtilsExtended.convertToArrowBatchRdd(df)
       val jsonSchema = arrowSchema.toJson
       val handleString = handle.toStringUtf8
-
       val serverURIs = clusterManager.getNodes.map(_.internalLocation).map(_.getUri)
 
       abr.foreachPartition(it => {
@@ -154,6 +153,8 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
         val clients = serverLocations.map(location => {
           FlightClient.builder(rootAllocator, location).build()
         })
+
+        clients.foreach(c => c.authenticateBasic("user", "password"))
 
         val schema = Schema.fromJSON(jsonSchema)
         val root = VectorSchemaRoot.create(schema, rootAllocator)
@@ -310,10 +311,8 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
                                 listener: FlightProducer.ServerStreamListener): Unit = {
     val catalog = command.getCatalog
     val filterPattern = if (command.hasDbSchemaFilterPattern) command.getDbSchemaFilterPattern else null
-
     val table = VectorSchemaRoot.create(Schemas.GET_SCHEMAS_SCHEMA, rootAllocator)
     val schemas = CatalogUtils.listNamespaces(spark, catalog, filterPattern)
-
     populateVarCharVector(table.getVector("catalog_name").asInstanceOf[VarCharVector], schemas.map(_._1))
     populateVarCharVector(table.getVector("db_schema_name").asInstanceOf[VarCharVector], schemas.map(_._2))
 
@@ -436,7 +435,10 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
     emptyResponseForSchema(Schemas.GET_CROSS_REFERENCE_SCHEMA, listener)
   }
 
-  override def close(): Unit = spark.stop()
+  override def close(): Unit = {
+    spark.stop()
+    clusterManager.close()
+  }
 
   override def listFlights(context: FlightProducer.CallContext,
                            criteria: Criteria,

@@ -33,7 +33,7 @@ object ClusterManager {
 
 }
 
-trait ClusterManager {
+trait ClusterManager extends AutoCloseable {
 
   def getLocation: Location
 

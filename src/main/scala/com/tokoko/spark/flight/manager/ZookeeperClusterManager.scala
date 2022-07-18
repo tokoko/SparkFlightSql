@@ -9,8 +9,6 @@ import org.apache.curator.retry.ExponentialBackoffRetry
 import org.apache.curator.utils.ZKPaths
 import org.apache.log4j.Logger
 import org.apache.zookeeper.CreateMode
-
-import java.nio.charset.StandardCharsets
 import collection.JavaConverters._
 
 class ZookeeperClusterManager(conf: Map[String, String]) extends ClusterManager {
@@ -63,4 +61,9 @@ class ZookeeperClusterManager(conf: Map[String, String]) extends ClusterManager 
     )
   }
 
+  override def close(): Unit = {
+    println("Close Called")
+    nodeGroup.close()
+    zkClient.close()
+  }
 }
