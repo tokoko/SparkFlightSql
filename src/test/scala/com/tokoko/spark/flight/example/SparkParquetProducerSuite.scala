@@ -1,8 +1,7 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.example
 
 import com.tokoko.spark.flight.utils.TestUtils
-import org.apache.arrow.flight._
-import org.apache.arrow.flight.sql.FlightSqlClient
+import org.apache.arrow.flight.{FlightClient, FlightDescriptor, FlightServer}
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.curator.test.TestingServer
 import org.apache.spark.sql.SparkSession
@@ -10,16 +9,17 @@ import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
 
-class ZookeeperDataSuite extends AnyFunSuite with BeforeAndAfterAll {
+class SparkParquetProducerSuite extends AnyFunSuite with BeforeAndAfterAll {
 
-  var clients: Seq[FlightSqlClient] = _
+  var clients: Seq[FlightClient] = _
   var servers: Seq[FlightServer] = _
   var rootAllocator: BufferAllocator = _
   var spark: SparkSession = _
   var zkServer: TestingServer = _
 
   override def beforeAll(): Unit = {
-    zkServer = new TestingServer(9006, true)
+    val zookeeperPort = 9028
+    zkServer = new TestingServer(zookeeperPort, true)
     spark = SparkSession.builder
       .master("local")
       .enableHiveSupport
@@ -27,22 +27,33 @@ class ZookeeperDataSuite extends AnyFunSuite with BeforeAndAfterAll {
 
     spark.sparkContext.setLogLevel("WARN")
 
-    spark.range(10).toDF("id").write.mode("overwrite").saveAsTable("TestTable")
+    spark.range(20).toDF("id")
+      .write
+      .format("parquet")
+      .mode("overwrite")
+      .save("local/test")
 
     rootAllocator = new RootAllocator(Long.MaxValue)
 
-    val setup = TestUtils.startServers(rootAllocator, spark, Seq(9004, 9005), "basic", "zookeeper", "9006")
+    val setup = TestUtils.startServersCommon(rootAllocator,
+      spark,
+      Seq(9024, 9026),
+      "basic",
+      "zookeeper",
+      zookeeperPort.toString,
+      "delta"
+      )
 
     servers = setup._1
     clients = setup._2
   }
 
   test("check select statement") {
-    val query = "SELECT * FROM testtable"
-    val fi = clients.head.execute(query)
+    val df = spark.read.parquet("local/test")
+    val fi = clients.head.getInfo(FlightDescriptor.path("local/test"))
 
     assert(TestUtils.assertSmallDataFrameEquality(
-      TestUtils.toDf(fi, spark, rootAllocator).orderBy("id"), spark.sql(query)))
+      TestUtils.toDf(fi, spark, rootAllocator).orderBy("id"), df))
   }
 
   override def afterAll(): Unit = {

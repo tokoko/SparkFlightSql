@@ -1,4 +1,4 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.manager
 
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch

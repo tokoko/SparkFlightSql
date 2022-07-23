@@ -2,38 +2,34 @@ package com.tokoko.spark.flight
 
 import com.google.protobuf.Any.pack
 import com.google.protobuf.ByteString.copyFrom
-import com.google.protobuf.{ByteString, Message}
-import com.tokoko.spark.flight.manager.ClusterManager
-import org.apache.arrow.flight.{Action, AsyncPutListener, CallStatus, Criteria, FlightClient, FlightDescriptor, FlightEndpoint, FlightInfo, FlightProducer, FlightStream, Location, PutResult, Result, SchemaResult, Ticket}
+import com.google.protobuf.Message
+import com.tokoko.spark.flight.manager.SparkFlightManager
+import org.apache.arrow.flight.{CallStatus, Criteria, FlightDescriptor, FlightEndpoint, FlightInfo, FlightProducer, FlightStream, PutResult, Result, SchemaResult, Ticket}
 import org.apache.arrow.flight.sql.{FlightSqlProducer, SqlInfoBuilder}
 import org.apache.arrow.flight.sql.FlightSqlProducer.Schemas
 import org.apache.arrow.flight.sql.impl.FlightSql
 import org.apache.arrow.memory.RootAllocator
-import org.apache.arrow.vector.ipc.{ReadChannel, WriteChannel}
+import org.apache.arrow.vector.ipc.WriteChannel
 import org.apache.arrow.vector.ipc.message.MessageSerializer
-import org.apache.arrow.vector.{VarBinaryVector, VarCharVector, VectorLoader, VectorSchemaRoot, VectorUnloader}
+import org.apache.arrow.vector.{VarBinaryVector, VarCharVector, VectorSchemaRoot}
 import org.apache.arrow.vector.types.pojo.Schema
 import org.apache.log4j.Logger
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.util.ArrowUtilsExtended
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream, IOException}
+import java.io.{ByteArrayOutputStream, IOException}
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.charset.StandardCharsets
-import java.util
 import java.util.UUID.randomUUID
 import collection.JavaConverters._
-import scala.util.Random
 
 /*_*/
-class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: SparkSession) extends FlightSqlProducer {
+class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: SparkSession) extends FlightSqlProducer {
   /*_*/
   private val logger = Logger.getLogger(this.getClass)
 
   val rootAllocator = new RootAllocator()
-
-  private val localFlightBuffer =  new util.HashMap[ByteString, Statement]
 
   private val sqlInfoBuilder = new SqlInfoBuilder()
     .withFlightSqlServerName("SparkFlightSql")
@@ -42,7 +38,7 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
     .withFlightSqlServerReadOnly(true)
 
   private def getFlightInfoForSchema(schema: Schema, request: Message, descriptor: FlightDescriptor): FlightInfo = {
-    val location = clusterManager.getInfo.publicLocation
+    val location = clusterManager.getNodeInfo.publicLocation
     val ticket: Ticket = new Ticket(pack(request).toByteArray)
     val endpoints = List(new FlightEndpoint(ticket, location))
     new FlightInfo(schema, descriptor, endpoints.asJava, -1, -1)
@@ -74,44 +70,6 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
     vector.setValueCount(data.size)
   }
 
-  override def acceptPut(context: FlightProducer.CallContext, flightStream: FlightStream, ackStream: FlightProducer.StreamListener[PutResult]): Runnable = {
-    logger.warn("Accept Put Called")
-    val path = flightStream.getDescriptor.getPath
-    if (path != null && !path.isEmpty) () => {
-      def foo(): Unit = {
-        val handle = ByteString.copyFromUtf8(path.get(0))
-
-        // TODO
-        if (!localFlightBuffer.containsKey(handle)) {
-          localFlightBuffer.put(handle, new Statement)
-        }
-
-        val statement = localFlightBuffer.get(handle)
-        statement.setRoot(flightStream.getRoot)
-        while ( {
-          flightStream.next
-        }) {
-          val root = flightStream.getRoot
-          new VectorUnloader(root)
-          val vectorUnloader = new VectorUnloader(root)
-          statement.addBatch(vectorUnloader.getRecordBatch)
-        }
-        ackStream.onCompleted()
-      }
-
-      foo()
-    }
-    else super.acceptPut(context, flightStream, ackStream)
-  }
-
-  override def doAction(context: FlightProducer.CallContext, action: Action, listener: FlightProducer.StreamListener[Result]): Unit = {
-//    logger.warn("DoAction called at " + internalLocation.toString + " " + action.getType)
-    if (!clusterManager.handleDoAction(context, action, listener)) {
-      super.doAction(context, action, listener)
-    }
-  }
-
-
   /*_*/
   override def createPreparedStatement(request: FlightSql.ActionCreatePreparedStatementRequest,
                                        context: FlightProducer.CallContext, listener: FlightProducer.StreamListener[Result]): Unit = {
@@ -125,67 +83,13 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
   override def getFlightInfoStatement(command: FlightSql.CommandStatementQuery,
                                       context: FlightProducer.CallContext,
                                       descriptor: FlightDescriptor): FlightInfo = {
-    logger.warn("GetFlightInfo called at " + "internalLocation.toString")
-    val handle = copyFrom(randomUUID.toString.getBytes(StandardCharsets.UTF_8))
-    val sparkSchema = spark.sql(command.getQuery).schema
-    val arrowSchema = ArrowUtilsExtended.toArrowSchema(sparkSchema, spark.sessionState.conf.sessionLocalTimeZone)
-
-    val ticketStatementQuery = FlightSql.TicketStatementQuery.newBuilder.setStatementHandle(handle).build
-
-    val ticket = new Ticket(pack(ticketStatementQuery).toByteArray)
+//    logger.warn("GetFlightInfo called at " + "internalLocation.toString")
     val query = command.getQuery
-    clusterManager.addFlight(handle)
-
-    new Thread(() => {
-      val df = spark.sql(query).repartition(3)
-      val abr = ArrowUtilsExtended.convertToArrowBatchRdd(df)
-      val jsonSchema = arrowSchema.toJson
-      val handleString = handle.toStringUtf8
-      val serverURIs = clusterManager.getNodes.map(_.internalLocation).map(_.getUri)
-
-      abr.foreachPartition(it => {
-        val serverLocations = serverURIs.map(uri =>
-          Location.forGrpcInsecure(uri.getHost, uri.getPort)
-        )
-
-        val rootAllocator = new RootAllocator(Long.MaxValue)
-
-        val clients = serverLocations.map(location => {
-          FlightClient.builder(rootAllocator, location).build()
-        })
-
-        clients.foreach(c => c.authenticateBasic("user", "password"))
-
-        val schema = Schema.fromJSON(jsonSchema)
-        val root = VectorSchemaRoot.create(schema, rootAllocator)
-        val descriptor = FlightDescriptor.path(handleString)
-
-        it.foreach(r => {
-          try {
-            val arb = MessageSerializer.deserializeRecordBatch(
-              new ReadChannel(Channels.newChannel(
-                new ByteArrayInputStream(r)
-              )), rootAllocator)
-            val vectorLoader = new VectorLoader(root)
-            vectorLoader.load(arb)
-          } catch {
-            case e: IOException => e.printStackTrace()
-          }
-
-          val clientListener = clients(new Random().nextInt(clients.size))
-            .startPut(descriptor, root, new AsyncPutListener())
-          clientListener.putNext()
-          clientListener.completed();
-        });
-      })
-
-      clusterManager.setCompleted(handle)
-    }).start()
-
-    val endpoints = clusterManager.getNodes.map(_.publicLocation)
-      .map(serverLocation => new FlightEndpoint(ticket, serverLocation))
-
-    new FlightInfo(arrowSchema, descriptor, endpoints.asJava, -1, -1)
+    val df = spark.sql(query).repartition(3)
+    clusterManager.distributeFlight(descriptor, df, handle => {
+      val ticketStatementQuery = FlightSql.TicketStatementQuery.newBuilder.setStatementHandle(copyFrom(handle)).build
+      new Ticket(pack(ticketStatementQuery).toByteArray)
+    })
   }
 
   override def getFlightInfoPreparedStatement(command: FlightSql.CommandPreparedStatementQuery, context: FlightProducer.CallContext, descriptor: FlightDescriptor): FlightInfo = {
@@ -197,66 +101,7 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
   override def getStreamStatement(ticket: FlightSql.TicketStatementQuery, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
     //logger.warn("GetStream called at " + internalLocation.toString)
     val handle = ticket.getStatementHandle
-
-    // TODO
-    if (!localFlightBuffer.containsKey(handle)) {
-      localFlightBuffer.put(handle, new Statement)
-    }
-
-    val statement = localFlightBuffer.get(handle)
-
-    if (statement == null) {
-//      logger.warn("Couldn't locate requested statement")
-      listener.error(new Exception("Couldn't locate requested statement"))
-      return
-    }
-
-    while ( {
-      statement.getRoot == null && !(clusterManager.getStatus(handle) == "COMPLETED")
-    }) try {
-//      logger.warn("Waiting for statement VectorSchemaRoot: Sleeping for 1 second")
-      Thread.sleep(1000)
-    } catch {
-      case e: InterruptedException =>
-        throw new RuntimeException(e)
-    }
-
-    val root = statement.getRoot
-
-    var completed = false
-
-    if (root != null) {
-      listener.start(root)
-
-      while (!completed) {
-        val batch = statement.nextBatch()
-        val loader = new VectorLoader(root)
-        if (batch == null) {
-          if (clusterManager.getStatus(handle) == "COMPLETED") {
-            completed = true
-          } else {
-            try {
-              //            logger.warn("Waiting for additional ArrowRecordBatches: Sleeping for 1 second")
-              Thread.sleep(1000)
-            } catch {
-              case e: InterruptedException => throw new RuntimeException(e)
-            }
-          }
-        } else {
-          if (!completed) {
-            try loader.load(batch)
-            catch {
-              case ex: Exception =>
-                ex.printStackTrace()
-                throw ex
-            }
-            listener.putNext()
-          }
-        }
-      }
-    }
-
-    listener.completed()
+    clusterManager.streamDistributedFlight(handle, listener)
   }
 
   override def getStreamPreparedStatement(command: FlightSql.CommandPreparedStatementQuery, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
@@ -442,9 +287,7 @@ class SparkFlightSqlProducer(val clusterManager: ClusterManager, val spark: Spar
 
   override def listFlights(context: FlightProducer.CallContext,
                            criteria: Criteria,
-                           listener: FlightProducer.StreamListener[FlightInfo]): Unit = {
-
-  }
+                           listener: FlightProducer.StreamListener[FlightInfo]): Unit = {}
 
 }
 /*_*/
