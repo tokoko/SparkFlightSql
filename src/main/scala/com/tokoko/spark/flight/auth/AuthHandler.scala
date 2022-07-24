@@ -11,7 +11,7 @@ object AuthHandler {
       ServerAuthHandler.NO_OP
     } else if (mode.equals("basic")) {
       new BasicServerAuthHandler(
-        new SparkFlightSqlBasicServerAuthValidator(conf)
+        new StaticBasicAuthValidator(conf)
       )
     } else null
   }

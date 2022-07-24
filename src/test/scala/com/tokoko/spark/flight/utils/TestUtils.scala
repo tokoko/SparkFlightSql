@@ -1,9 +1,9 @@
 package com.tokoko.spark.flight.utils
 
-import com.tokoko.spark.flight.SparkFlightSqlProducer
 import com.tokoko.spark.flight.auth.AuthHandler
 import com.tokoko.spark.flight.example.SparkParquetFlightProducer
 import com.tokoko.spark.flight.manager.SparkFlightManager
+import com.tokoko.spark.flight.sql.SparkFlightSqlProducer
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.flight.{FlightClient, FlightInfo, FlightServer, Location}
 import org.apache.arrow.memory.BufferAllocator

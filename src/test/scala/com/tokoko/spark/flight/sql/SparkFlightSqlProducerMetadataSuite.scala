@@ -1,10 +1,9 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.sql
 
-import com.google.protobuf.ByteString.readFrom
 import com.tokoko.spark.flight.utils.TestUtils
 import org.apache.arrow.flight.sql.FlightSqlClient
 import org.apache.arrow.flight.sql.util.TableRef
-import org.apache.arrow.flight.{CallStatus, FlightClient, FlightInfo, FlightServer, Location}
+import org.apache.arrow.flight.{CallStatus, FlightClient, FlightInfo, FlightServer}
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.arrow.vector.ipc.ReadChannel
 import org.apache.arrow.vector.ipc.message.MessageSerializer
@@ -16,11 +15,10 @@ import org.apache.spark.sql.SparkSession
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 
-import collection.JavaConverters._
 import java.io.ByteArrayInputStream
-import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.charset.StandardCharsets
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfterAll {

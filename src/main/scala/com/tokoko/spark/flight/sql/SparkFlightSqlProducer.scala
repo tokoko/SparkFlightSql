@@ -1,18 +1,18 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.sql
 
 import com.google.protobuf.Any.pack
 import com.google.protobuf.ByteString.copyFrom
 import com.google.protobuf.Message
 import com.tokoko.spark.flight.manager.SparkFlightManager
-import org.apache.arrow.flight.{CallStatus, Criteria, FlightDescriptor, FlightEndpoint, FlightInfo, FlightProducer, FlightStream, PutResult, Result, SchemaResult, Ticket}
-import org.apache.arrow.flight.sql.{FlightSqlProducer, SqlInfoBuilder}
 import org.apache.arrow.flight.sql.FlightSqlProducer.Schemas
 import org.apache.arrow.flight.sql.impl.FlightSql
+import org.apache.arrow.flight.sql.{FlightSqlProducer, SqlInfoBuilder}
+import org.apache.arrow.flight._
 import org.apache.arrow.memory.RootAllocator
 import org.apache.arrow.vector.ipc.WriteChannel
 import org.apache.arrow.vector.ipc.message.MessageSerializer
-import org.apache.arrow.vector.{VarBinaryVector, VarCharVector, VectorSchemaRoot}
 import org.apache.arrow.vector.types.pojo.Schema
+import org.apache.arrow.vector.{VarBinaryVector, VarCharVector, VectorSchemaRoot}
 import org.apache.log4j.Logger
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.util.ArrowUtilsExtended
@@ -20,9 +20,7 @@ import org.apache.spark.sql.util.ArrowUtilsExtended
 import java.io.{ByteArrayOutputStream, IOException}
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
-import java.nio.charset.StandardCharsets
-import java.util.UUID.randomUUID
-import collection.JavaConverters._
+import scala.collection.JavaConverters._
 
 /*_*/
 class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: SparkSession) extends FlightSqlProducer {
@@ -37,7 +35,7 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
     .withFlightSqlServerArrowVersion("7.0.0")
     .withFlightSqlServerReadOnly(true)
 
-  private def getFlightInfoForSchema(schema: Schema, request: Message, descriptor: FlightDescriptor): FlightInfo = {
+  private def getSingleEndpointFlightInfoForSchema(schema: Schema, request: Message, descriptor: FlightDescriptor): FlightInfo = {
     val location = clusterManager.getNodeInfo.publicLocation
     val ticket: Ticket = new Ticket(pack(request).toByteArray)
     val endpoints = List(new FlightEndpoint(ticket, location))
@@ -83,7 +81,7 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
   override def getFlightInfoStatement(command: FlightSql.CommandStatementQuery,
                                       context: FlightProducer.CallContext,
                                       descriptor: FlightDescriptor): FlightInfo = {
-//    logger.warn("GetFlightInfo called at " + "internalLocation.toString")
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoStatement")
     val query = command.getQuery
     val df = spark.sql(query).repartition(3)
     clusterManager.distributeFlight(descriptor, df, handle => {
@@ -92,16 +90,19 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
     })
   }
 
+  override def getStreamStatement(ticket: FlightSql.TicketStatementQuery, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamStatement")
+    val handle = ticket.getStatementHandle
+    clusterManager.streamDistributedFlight(handle, listener)
+  }
+
+
   override def getFlightInfoPreparedStatement(command: FlightSql.CommandPreparedStatementQuery, context: FlightProducer.CallContext, descriptor: FlightDescriptor): FlightInfo = {
     throw CallStatus.UNIMPLEMENTED.toRuntimeException
   }
 
-  override def getSchemaStatement(command: FlightSql.CommandStatementQuery, context: FlightProducer.CallContext, descriptor: FlightDescriptor): SchemaResult = ???
-
-  override def getStreamStatement(ticket: FlightSql.TicketStatementQuery, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
-    //logger.warn("GetStream called at " + internalLocation.toString)
-    val handle = ticket.getStatementHandle
-    clusterManager.streamDistributedFlight(handle, listener)
+  override def getSchemaStatement(command: FlightSql.CommandStatementQuery, context: FlightProducer.CallContext, descriptor: FlightDescriptor): SchemaResult = {
+    throw CallStatus.UNIMPLEMENTED.toRuntimeException
   }
 
   override def getStreamPreparedStatement(command: FlightSql.CommandPreparedStatementQuery, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
@@ -121,21 +122,25 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
   }
 
   override def getFlightInfoSqlInfo(request: FlightSql.CommandGetSqlInfo, context: FlightProducer.CallContext, descriptor: FlightDescriptor): FlightInfo = {
-    getFlightInfoForSchema(Schemas.GET_SQL_INFO_SCHEMA, request, descriptor)
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoSqlInfo")
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_SQL_INFO_SCHEMA, request, descriptor)
   }
 
   override def getStreamSqlInfo(command: FlightSql.CommandGetSqlInfo, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamSqlInfo")
     sqlInfoBuilder.send(command.getInfoList, listener)
   }
 
   override def getFlightInfoCatalogs(request: FlightSql.CommandGetCatalogs,
                                      context: FlightProducer.CallContext,
                                      descriptor: FlightDescriptor): FlightInfo = {
-    getFlightInfoForSchema(Schemas.GET_CATALOGS_SCHEMA, request, descriptor)
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoCatalogs")
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_CATALOGS_SCHEMA, request, descriptor)
   }
 
   override def getStreamCatalogs(context: FlightProducer.CallContext,
                                  listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamCatalogs")
     val table = VectorSchemaRoot.create(Schemas.GET_CATALOGS_SCHEMA, rootAllocator)
     val catalogs = CatalogUtils.listCatalogs(spark)
     populateVarCharVector(table.getVector("catalog_name").asInstanceOf[VarCharVector], catalogs)
@@ -148,12 +153,14 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
   override def getFlightInfoSchemas(request: FlightSql.CommandGetDbSchemas,
                                     context: FlightProducer.CallContext,
                                     descriptor: FlightDescriptor): FlightInfo = {
-    getFlightInfoForSchema(Schemas.GET_SCHEMAS_SCHEMA, request, descriptor)
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoSchemas")
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_SCHEMAS_SCHEMA, request, descriptor)
   }
 
   override def getStreamSchemas(command: FlightSql.CommandGetDbSchemas,
                                 context: FlightProducer.CallContext,
                                 listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamSchemas")
     val catalog = command.getCatalog
     val filterPattern = if (command.hasDbSchemaFilterPattern) command.getDbSchemaFilterPattern else null
     val table = VectorSchemaRoot.create(Schemas.GET_SCHEMAS_SCHEMA, rootAllocator)
@@ -170,11 +177,13 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
   override def getFlightInfoTables(request: FlightSql.CommandGetTables,
                                    context: FlightProducer.CallContext,
                                    descriptor: FlightDescriptor): FlightInfo = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoTables")
     val schema = if (request.getIncludeSchema) Schemas.GET_TABLES_SCHEMA else Schemas.GET_TABLES_SCHEMA_NO_SCHEMA
-    getFlightInfoForSchema(schema, request, descriptor)
+    getSingleEndpointFlightInfoForSchema(schema, request, descriptor)
   }
 
   override def getStreamTables(command: FlightSql.CommandGetTables, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamTables")
     val schema = if (command.getIncludeSchema) Schemas.GET_TABLES_SCHEMA else Schemas.GET_TABLES_SCHEMA_NO_SCHEMA
     val catalog = command.getCatalog
     val schemaPattern = if (command.hasDbSchemaFilterPattern) command.getDbSchemaFilterPattern else null
@@ -221,62 +230,70 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
   override def getFlightInfoPrimaryKeys(request: FlightSql.CommandGetPrimaryKeys,
                                         context: FlightProducer.CallContext,
                                         descriptor: FlightDescriptor): FlightInfo = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoPrimaryKeys")
     if (!CatalogUtils.tableExists(spark, request.getCatalog, request.getDbSchema, request.getTable))
       throw CallStatus.NOT_FOUND.toRuntimeException
 
-    getFlightInfoForSchema(Schemas.GET_PRIMARY_KEYS_SCHEMA, request, descriptor)
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_PRIMARY_KEYS_SCHEMA, request, descriptor)
   }
 
   override def getFlightInfoExportedKeys(request: FlightSql.CommandGetExportedKeys,
                                          context: FlightProducer.CallContext,
                                          descriptor: FlightDescriptor): FlightInfo = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoExportedKeys")
     if (!CatalogUtils.tableExists(spark, request.getCatalog, request.getDbSchema, request.getTable))
       throw CallStatus.NOT_FOUND.toRuntimeException
 
-    getFlightInfoForSchema(Schemas.GET_EXPORTED_KEYS_SCHEMA, request, descriptor)
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_EXPORTED_KEYS_SCHEMA, request, descriptor)
   }
 
   override def getFlightInfoImportedKeys(request: FlightSql.CommandGetImportedKeys,
                                          context: FlightProducer.CallContext,
                                          descriptor: FlightDescriptor): FlightInfo = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoImportedKeys")
     if (!CatalogUtils.tableExists(spark, request.getCatalog, request.getDbSchema, request.getTable))
       throw CallStatus.NOT_FOUND.toRuntimeException
 
-    getFlightInfoForSchema(Schemas.GET_IMPORTED_KEYS_SCHEMA, request, descriptor)
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_IMPORTED_KEYS_SCHEMA, request, descriptor)
   }
 
   override def getFlightInfoCrossReference(request: FlightSql.CommandGetCrossReference,
                                            context: FlightProducer.CallContext,
                                            descriptor: FlightDescriptor): FlightInfo = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getFlightInfoCrossReference")
     if (
       !CatalogUtils.tableExists(spark, request.getPkCatalog, request.getPkDbSchema, request.getPkTable) ||
         !CatalogUtils.tableExists(spark, request.getFkCatalog, request.getFkDbSchema, request.getFkTable)
     ) throw CallStatus.NOT_FOUND.toRuntimeException
 
-    getFlightInfoForSchema(Schemas.GET_CROSS_REFERENCE_SCHEMA, request, descriptor)
+    getSingleEndpointFlightInfoForSchema(Schemas.GET_CROSS_REFERENCE_SCHEMA, request, descriptor)
   }
 
   override def getStreamPrimaryKeys(command: FlightSql.CommandGetPrimaryKeys,
                                     context: FlightProducer.CallContext,
                                     listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamPrimaryKeys")
     emptyResponseForSchema(Schemas.GET_PRIMARY_KEYS_SCHEMA, listener)
   }
 
   override def getStreamExportedKeys(command: FlightSql.CommandGetExportedKeys,
                                      context: FlightProducer.CallContext,
                                      listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamExportedKeys")
     emptyResponseForSchema(Schemas.GET_EXPORTED_KEYS_SCHEMA, listener)
   }
 
   override def getStreamImportedKeys(command: FlightSql.CommandGetImportedKeys,
                                      context: FlightProducer.CallContext,
                                      listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamImportedKeys")
     emptyResponseForSchema(Schemas.GET_IMPORTED_KEYS_SCHEMA, listener)
   }
 
   override def getStreamCrossReference(command: FlightSql.CommandGetCrossReference,
                                        context: FlightProducer.CallContext,
                                        listener: FlightProducer.ServerStreamListener): Unit = {
+    logger.info(s"${clusterManager.getNodeInfo.publicLocation.getUri}: getStreamCrossReference")
     emptyResponseForSchema(Schemas.GET_CROSS_REFERENCE_SCHEMA, listener)
   }
 

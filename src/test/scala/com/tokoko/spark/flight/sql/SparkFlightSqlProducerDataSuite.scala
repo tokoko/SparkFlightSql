@@ -1,4 +1,4 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.sql
 
 import com.tokoko.spark.flight.utils.TestUtils
 import org.apache.arrow.flight._

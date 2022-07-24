@@ -1,4 +1,4 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.sql
 
 object FilterPatternUtils {
 

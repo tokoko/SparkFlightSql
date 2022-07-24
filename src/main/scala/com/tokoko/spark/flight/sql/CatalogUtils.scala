@@ -1,4 +1,4 @@
-package com.tokoko.spark.flight
+package com.tokoko.spark.flight.sql
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog.{Identifier, SupportsNamespaces, TableCatalog}
@@ -27,18 +27,17 @@ object CatalogUtils {
   def listNamespaces(sparkSession: SparkSession, catalog: String, filterPattern: String): List[(String, String)] = {
     val manager = sparkSession.sessionState.catalogManager
 
-    val requestedCatalogs = if (catalog == "") listCatalogs(sparkSession).toList else List(catalog)
+    val requestedCatalogs = if (catalog == "") listCatalogs(sparkSession) else List(catalog)
 
     requestedCatalogs
       .map(c => manager.catalog(c))
       .collect {
-        case catalog: SupportsNamespaces => {
+        case catalog: SupportsNamespaces =>
           catalog.listNamespaces()
             .map(namespace => (catalog.name(), namespace.head))
-        }
         case _ => Array.empty[(String, String)]
       }.flatten
-        .filter(namespace => filterPattern == null || FilterPatternUtils.matches(namespace._2, filterPattern))
+      .filter(namespace => filterPattern == null || FilterPatternUtils.matches(namespace._2, filterPattern))
   }
 
   def listTables(sparkSession: SparkSession, catalog: String, schemaPattern: String, tablePattern: String): List[(String, String, String)] = {
@@ -48,10 +47,9 @@ object CatalogUtils {
     namespaces
       .map(namespace => (manager.catalog(namespace._1), namespace._2))
       .collect {
-        case (catalog: TableCatalog, namespace: String) => {
+        case (catalog: TableCatalog, namespace: String) =>
           catalog.listTables(Array(namespace))
             .map(id => (catalog.name(), id.namespace().head, id.name()))
-        }
         case _ => Array.empty[(String, String, String)]
       }.flatten
       .filter(table => tablePattern == null || FilterPatternUtils.matches(table._3, tablePattern))

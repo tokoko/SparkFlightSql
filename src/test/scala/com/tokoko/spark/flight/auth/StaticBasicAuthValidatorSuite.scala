@@ -6,11 +6,11 @@ import org.scalatest.funsuite.AnyFunSuite
 
 import scala.util.Random
 
-class BasicServerAuthValidatorSuite extends AnyFunSuite with BeforeAndAfterAll {
-  private var validator: SparkFlightSqlBasicServerAuthValidator = _
+class StaticBasicAuthValidatorSuite extends AnyFunSuite with BeforeAndAfterAll {
+  private var validator: StaticBasicAuthValidator = _
 
   override def beforeAll(): Unit = {
-    validator = new SparkFlightSqlBasicServerAuthValidator(Map(
+    validator = new StaticBasicAuthValidator(Map(
       "spark.flight.auth.basic.users" -> "test_user:test_password,test_user2:test_password2"
     ))
   }
