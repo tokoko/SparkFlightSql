@@ -3,6 +3,7 @@ package com.tokoko.spark.flight.sql
 import com.tokoko.spark.flight.auth.AuthHandler
 import com.tokoko.spark.flight.manager.SparkFlightManager
 import org.apache.arrow.flight.FlightServer
+import org.apache.arrow.flight.auth2.GeneratedBearerTokenAuthenticator
 import org.apache.arrow.memory.RootAllocator
 import org.apache.spark.sql.SparkSession
 
@@ -26,6 +27,9 @@ object SparkFlightSqlServer extends App {
 
   val server = FlightServer.builder(rootAllocator, manager.getLocation, new SparkFlightSqlProducer(manager, spark))
     .authHandler(AuthHandler(spark.conf.getAll))
+    .headerAuthenticator(
+      new GeneratedBearerTokenAuthenticator(null)
+    )
     .build
 
   server.start

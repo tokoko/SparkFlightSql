@@ -1,7 +1,8 @@
 package com.tokoko.spark.flight.example
 
+import com.tokoko.spark.flight.manager.SparkFlightManager
 import com.tokoko.spark.flight.utils.TestUtils
-import org.apache.arrow.flight.{FlightClient, FlightDescriptor, FlightServer}
+import org.apache.arrow.flight.{FlightClient, FlightDescriptor, FlightProducer, FlightServer}
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.curator.test.TestingServer
 import org.apache.spark.sql.SparkSession
@@ -13,6 +14,7 @@ class SparkParquetProducerSuite extends AnyFunSuite with BeforeAndAfterAll {
 
   var clients: Seq[FlightClient] = _
   var servers: Seq[FlightServer] = _
+  var managers: Seq[SparkFlightManager] = _
   var rootAllocator: BufferAllocator = _
   var spark: SparkSession = _
   var zkServer: TestingServer = _
@@ -46,6 +48,7 @@ class SparkParquetProducerSuite extends AnyFunSuite with BeforeAndAfterAll {
 
     servers = setup._1
     clients = setup._2
+    managers = setup._4
   }
 
   test("check select statement") {
@@ -57,6 +60,7 @@ class SparkParquetProducerSuite extends AnyFunSuite with BeforeAndAfterAll {
   }
 
   override def afterAll(): Unit = {
+    managers.foreach(_.close)
     servers.foreach(_.close)
     zkServer.close()
   }

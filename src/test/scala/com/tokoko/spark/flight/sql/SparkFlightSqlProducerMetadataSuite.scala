@@ -1,9 +1,9 @@
 package com.tokoko.spark.flight.sql
 
 import com.tokoko.spark.flight.utils.TestUtils
-import org.apache.arrow.flight.sql.FlightSqlClient
+import org.apache.arrow.flight.sql.{FlightSqlClient, FlightSqlProducer}
 import org.apache.arrow.flight.sql.util.TableRef
-import org.apache.arrow.flight.{CallStatus, FlightClient, FlightInfo, FlightServer}
+import org.apache.arrow.flight.{CallStatus, FlightClient, FlightInfo, FlightProducer, FlightServer}
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.arrow.vector.ipc.ReadChannel
 import org.apache.arrow.vector.ipc.message.MessageSerializer
@@ -11,6 +11,7 @@ import org.apache.arrow.vector.types.Types.MinorType
 import org.apache.arrow.vector.types.pojo.{Field, Schema}
 import org.apache.arrow.vector.{VarBinaryVector, VarCharVector}
 import org.apache.curator.test.TestingServer
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.sql.SparkSession
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
@@ -25,33 +26,42 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
 
   var clients: Seq[FlightClient] = _
   var servers: Seq[FlightServer] = _
+  var producers: Seq[FlightProducer] = _
   var rootAllocator: BufferAllocator = _
   var spark: SparkSession = _
   var zkServer: TestingServer = _
   var headClient: FlightSqlClient = _
 
   override def beforeAll(): Unit = {
-    val zookeeperPort = 9018
+    val zookeeperPort = 9822
     zkServer = new TestingServer(zookeeperPort, true)
+
+    zkServer.restart()
 
     val spark = SparkSession.builder
       .master("local")
       .config("spark.sql.catalog.test_catalog", "com.tokoko.spark.flight.utils.TestCatalog")
       .config("spark.sql.catalog.test_catalog.test_db", "test_table1,test_table2")
       .config("spark.sql.catalog.test_catalog.test_db2", "test_table3,test_table4")
-      .enableHiveSupport
       .appName("SparkFlightSqlServer").getOrCreate
 
     spark.sparkContext.setLogLevel("WARN")
 
-    spark.range(10).toDF("id").write.mode("overwrite").saveAsTable("testtable")
+    FileSystem.get(spark.sparkContext.hadoopConfiguration)
+      .delete(new Path("local/testtable"), true)
+
+    spark.range(10).toDF("id").write
+      .option("path", "local/testtable")
+      .mode("overwrite")
+      .saveAsTable("testtable")
 
     rootAllocator = new RootAllocator(Long.MaxValue)
 
-    val setup = TestUtils.startServersCommon(rootAllocator, spark, Seq(9014, 9016), "basic", "zookeeper", zookeeperPort.toString, "sql")
+    val setup = TestUtils.startServersCommon(rootAllocator, spark, Seq(9914, 9916), "basic", "zookeeper", zookeeperPort.toString, "sql")
 
     servers = setup._1
     clients = setup._2
+    producers = setup._3
 
     headClient = new FlightSqlClient(clients.head)
   }
@@ -104,7 +114,6 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
   test("getSchemas for all catalogs") {
     val client = headClient
     val fi = client.getSchemas("", null)
-    println(fi)
     val schemas = getSchemasOutput(fi)
 
     assert(schemas == mutable.Set(
@@ -248,6 +257,8 @@ class SparkFlightSqlProducerMetadataSuite extends AnyFunSuite with BeforeAndAfte
 
 
   override def afterAll(): Unit = {
+    producers.foreach(p => p.asInstanceOf[FlightSqlProducer].close())
+    zkServer.close()
     servers.foreach(s => s.close())
   }
 

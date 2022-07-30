@@ -1,7 +1,7 @@
 ThisBuild / scalaVersion := "2.12.15"
 
-val arrowVersion = "7.0.0" // TODO upgrade
-val sparkVersion = "3.2.1" // TODO upgrade
+val arrowVersion = "8.0.0"
+val sparkVersion = "3.3.0"
 
 lazy val root = (project in file("."))
   .settings(
@@ -19,20 +19,15 @@ lazy val root = (project in file("."))
       "org.apache.directory.api" % "api-ldap-client-api" % "2.1.0",
       "org.scalatest" %% "scalatest-funsuite" % "3.2.12" % Test,
       "org.apache.curator" % "curator-test" % "5.3.0" % Test,
-//      "org.apache.directory.server" % "apacheds-server-jndi" % "2.0.0.AM26" % Test,
       "org.apache.directory.server" % "apacheds-core-annotations" % "2.0.0.AM26" % Test,
       "org.apache.directory.server" % "apacheds-server-annotations" % "2.0.0.AM26" % Test,
       "org.apache.directory.server" % "apacheds-core" % "2.0.0.AM26" % Test,
       "org.apache.directory.server" % "apacheds-core-api" % "2.0.0.AM26" % Test,
       "org.apache.directory.api" % "api-ldap-codec-standalone" % "2.1.0" % Test
+//      "org.apache.ranger" % "ranger-hive-plugin" % "2.3.0"  % Test
 
     ),
-    assembly / assemblyJarName := "spark-flight-sql.jar",
-    dependencyOverrides ++= Seq(
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.12.3"
-      ,"com.fasterxml.jackson.core" % "jackson-databind" % "2.12.3"
-      ,"com.fasterxml.jackson.core" % "jackson-annotations" % "2.12.3"
-    )
+    assembly / assemblyJarName := "spark-flight-sql.jar"
   )
 
 ThisBuild / parallelExecution := false

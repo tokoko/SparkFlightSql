@@ -22,9 +22,9 @@ import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import scala.collection.JavaConverters._
 
-/*_*/
+
 class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: SparkSession) extends FlightSqlProducer {
-  /*_*/
+
   private val logger = Logger.getLogger(this.getClass)
 
   val rootAllocator = new RootAllocator()
@@ -68,7 +68,6 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
     vector.setValueCount(data.size)
   }
 
-  /*_*/
   override def createPreparedStatement(request: FlightSql.ActionCreatePreparedStatementRequest,
                                        context: FlightProducer.CallContext, listener: FlightProducer.StreamListener[Result]): Unit = {
     throw CallStatus.UNIMPLEMENTED.toRuntimeException
@@ -306,5 +305,7 @@ class SparkFlightSqlProducer(val clusterManager: SparkFlightManager, val spark: 
                            criteria: Criteria,
                            listener: FlightProducer.StreamListener[FlightInfo]): Unit = {}
 
+  override def getFlightInfoTypeInfo(request: FlightSql.CommandGetXdbcTypeInfo, context: FlightProducer.CallContext, descriptor: FlightDescriptor): FlightInfo = ???
+
+  override def getStreamTypeInfo(request: FlightSql.CommandGetXdbcTypeInfo, context: FlightProducer.CallContext, listener: FlightProducer.ServerStreamListener): Unit = ???
 }
-/*_*/

@@ -5,7 +5,7 @@ import com.tokoko.spark.flight.example.SparkParquetFlightProducer
 import com.tokoko.spark.flight.manager.SparkFlightManager
 import com.tokoko.spark.flight.sql.SparkFlightSqlProducer
 import org.apache.arrow.flight.sql.FlightSqlClient
-import org.apache.arrow.flight.{FlightClient, FlightInfo, FlightServer, Location}
+import org.apache.arrow.flight.{FlightClient, FlightInfo, FlightProducer, FlightServer, Location}
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.spark.sql.util.ArrowHelpers
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -87,7 +87,7 @@ object TestUtils {
                    managerMode: String,
                    zookeeperPort: String = null,
                    serverType: String = "sql"
-                  ): (Seq[FlightServer], Seq[FlightClient]) = {
+                  ): (Seq[FlightServer], Seq[FlightClient], Seq[FlightProducer], Seq[SparkFlightManager]) = {
 
     val managers = serverPorts.map(port => {
       val managerMap: Map[String, String] = if (managerMode == "static") {
@@ -126,11 +126,13 @@ object TestUtils {
       )
     } else Map.empty
 
-    val servers = managers.map(manager => {
-      val producer = if (serverType == "sql") new SparkFlightSqlProducer(manager, spark)
+    val producers =  managers.map(manager => {
+      if (serverType == "sql") new SparkFlightSqlProducer(manager, spark)
       else new SparkParquetFlightProducer(manager, spark)
+    })
 
-      FlightServer.builder(allocator, manager.getLocation, producer)
+    val servers = managers.zip(producers).map(el => {
+      FlightServer.builder(allocator, el._1.getLocation, el._2)
         .authHandler(AuthHandler(authMap))
         .build
     })
@@ -144,7 +146,7 @@ object TestUtils {
       client
     })
 
-    (servers, clients)
+    (servers, clients, producers, managers)
   }
 
   def assertSmallDataFrameEquality(actualDF: DataFrame, expectedDF: DataFrame): Boolean = {

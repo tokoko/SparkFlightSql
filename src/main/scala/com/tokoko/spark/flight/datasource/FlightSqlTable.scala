@@ -14,6 +14,8 @@ class FlightSqlTable(schema: StructType, flightInfoBuffer: Array[Byte]) extends 
 
   override def capabilities(): util.Set[TableCapability] = Set(TableCapability.BATCH_READ).asJava
 
+//  TableCapability.MICRO_BATCH_READ
+
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
     new FlightSqlScanBuilder(schema, flightInfoBuffer)
   }

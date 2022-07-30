@@ -2,7 +2,7 @@ package com.tokoko.spark.flight.sql
 
 import com.tokoko.spark.flight.utils.TestUtils
 import org.apache.arrow.flight._
-import org.apache.arrow.flight.sql.FlightSqlClient
+import org.apache.arrow.flight.sql.{FlightSqlClient, FlightSqlProducer}
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
 import org.apache.curator.test.TestingServer
 import org.apache.spark.sql.SparkSession
@@ -14,6 +14,7 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
 
   var clients: Seq[FlightClient] = _
   var servers: Seq[FlightServer] = _
+  var producers: Seq[FlightProducer] = _
   var rootAllocator: BufferAllocator = _
   var spark: SparkSession = _
   var zkServer: TestingServer = _
@@ -37,6 +38,7 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
 
     servers = setup._1
     clients = setup._2
+    producers = setup._3
 
     headClient = new FlightSqlClient(clients.head)
   }
@@ -66,7 +68,8 @@ class SparkFlightSqlProducerDataSuite extends AnyFunSuite with BeforeAndAfterAll
   }
 
   override def afterAll(): Unit = {
-    servers.foreach(_.shutdown)
+    producers.foreach(p => p.asInstanceOf[FlightSqlProducer].close())
+    servers.foreach(_.close)
     zkServer.close()
   }
 

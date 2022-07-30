@@ -21,7 +21,7 @@ object ArrowHelpers {
     val channel = new WriteChannel(Channels.newChannel(out))
     MessageSerializer.serialize(channel, arb)
     val rdd = new JavaSparkContext(spark.sparkContext).parallelize(Collections.singletonList(out.toByteArray))
-    ArrowConverters.toDataFrame(rdd, sparkSchema.json, spark.sqlContext)
+    ArrowConverters.toDataFrame(rdd, sparkSchema.json, spark)
   }
 
 }

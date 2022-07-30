@@ -55,5 +55,5 @@ class TestCatalog extends TableCatalog with SupportsNamespaces {
 
   def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
 
-  def dropNamespace(namespace: Array[String]): Boolean = ???
+  override def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = ???
 }

@@ -23,7 +23,7 @@ object SparkParquetFlightProducer {
   server.awaitTermination()
 }
 
-class SparkParquetFlightProducer(val clusterManager: SparkFlightManager, val spark: SparkSession) extends FlightProducer{
+class SparkParquetFlightProducer(val clusterManager: SparkFlightManager, val spark: SparkSession) extends FlightProducer {
   override def getStream(context: FlightProducer.CallContext, ticket: Ticket, listener: FlightProducer.ServerStreamListener): Unit = {
     clusterManager.streamDistributedFlight(ticket, listener)
   }
@@ -43,4 +43,5 @@ class SparkParquetFlightProducer(val clusterManager: SparkFlightManager, val spa
   override def doAction(context: FlightProducer.CallContext, action: Action, listener: FlightProducer.StreamListener[Result]): Unit = ???
 
   override def listActions(context: FlightProducer.CallContext, listener: FlightProducer.StreamListener[ActionType]): Unit = ???
+
 }

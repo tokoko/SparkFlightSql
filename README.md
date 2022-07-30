@@ -56,15 +56,14 @@ and `docker exec -ti dev-spark-worker-a-1 bash /opt/spark-apps/run.sh`
 | Metadata Operations                          | In Progress |
 | Read-Only Operations                         | In Progress |
 | Distributed Server                           | In Progress |
-| Execution Mode configurable per query (auto) | Planned     |
 | Prepared Statements                          | Planned     |
 | Streaming Queries                            | Planned     |
 | Spark UI Plugin                              | Planned     |
 | ZooKeeper Integration                        | In Progress |
 | DML Operations                               | Planned     |
 | Basic Authentication                         | In Progress |
-| LDAP Authentication                          | Planned     |
+| LDAP Authentication                          | In Progress |
 | Kerberos Authentication                      | Planned     |
-| Ranger Integration                           | Planned     |
+| Ranger Integration (Hive)                    | Planned     |
 | Storage Impersonation                        | Planned     |
 | Spark DataSourceV2                           | In Progress |
